@@ -1,141 +1,145 @@
 import * as React from 'react'
 
-interface IHooksState {
+interface IHooksComponentState {
   [nu: number]: any
 }
 
-interface IHookEffect {
+interface IHooksComponentEffect {
   [nu: number]: [(() => void) | null, any[] | null]
 }
 
-export interface IHooks {
-  useState<T>(value: T): [T, (value: T) => void]
-  useEffect(effect: () => (() => void) | void, dependencies?: any[]): void
-  useContext<T>(): T
+interface IHooksComponentExtension {
+  state: IHooksComponentState
+  effect: IHooksComponentEffect
+  effectDelayed: Array<() => void>
 }
 
-function isChanged(d1: any[] | null | undefined, d2: any[] | null): boolean {
-  if (!d1 || !d2) {
+type IHooksComponent = React.Component<any, IHooksComponentState> & IHooksComponentExtension
+
+interface IHooksContext {
+  component: IHooksComponent
+  useStateNu: number
+
+  useEffectNu: number
+}
+
+const hooksContextStack: IHooksContext[] = []
+
+function hooksContextNew(component: IHooksComponent): IHooksContext {
+  return {component, useEffectNu: 0, useStateNu: 0}
+}
+
+function hooksContextPush(component: IHooksComponent): void {
+  hooksContextStack.push(hooksContextNew(component))
+}
+
+function hooksContextPop(): void {
+  hooksContextStack.pop()
+}
+
+function hooksContextTop(): IHooksContext {
+  return hooksContextStack[hooksContextStack.length - 1]
+}
+
+export function useState<T>(defaultValue: T): [T, (value: T, callback?: () => void) => void] {
+  const context = hooksContextTop()
+  const component = context.component
+  const useStateNu = context.useStateNu++
+  const setState = (value: T, callback?: () => void) => component.setState({[useStateNu]: value}, callback)
+
+  const state = component.state
+  if (state.hasOwnProperty(useStateNu)) {
+    return [state[useStateNu], setState]
+  } else {
+    state[useStateNu] = defaultValue
+    return [defaultValue, setState]
+  }
+}
+
+function isDependenciesChange(dependencies: any[] | null | undefined, lastDependencies: any[] | null | undefined) {
+  if (!dependencies || !lastDependencies) {
     return true
   }
-  for (let i = 0, l = Math.max(d1.length, d2.length); i < l; i++) {
-    if (d1[i] !== d2[i]) {
+  for (let i = 0, l = Math.max(dependencies.length, lastDependencies.length); i < l; i++) {
+    if (dependencies[i] !== lastDependencies[i]) {
       return true
     }
   }
   return false
 }
 
-export function withHooks<Props>(renderWithHooks: (hooks: IHooks) => (props: Props) => React.ReactNode, name?: string): React.FunctionComponent<Props> {
+export function useEffect(effectFunc: () => ((() => void) | void), dependencies?: any[]): void {
+  const context = hooksContextTop()
+  const useEffectNu = context.useEffectNu++
 
-  const componentClass = class extends React.Component<Props, IHooksState> {
-    public state: IHooksState = {}
-    public effect: IHookEffect = {}
-    private waitedEffects: { [nu: number]: () => void } = {}
-    private renderFunc: ((props: Props) => React.ReactNode) | null = null
+  const {effect, effectDelayed} = context.component
 
-    public render() {
-      if (this.renderFunc) {
-        return this.renderFunc(this.props)
-      } else {
-        return this.initRenderFunc(this.props)
+  function runEffect() {
+    const cleanup = effectFunc()
+    effect[useEffectNu] = [cleanup || null, dependencies || null]
+  }
+
+  if (effect.hasOwnProperty(useEffectNu)) {
+    const [cleanup, lastDependencies] = effect[useEffectNu]
+    if (isDependenciesChange(dependencies, lastDependencies)) {
+      effectDelayed.push(() => {
+        if (cleanup) {
+          cleanup()
+        }
+        runEffect()
+      })
+    }
+  } else {
+    effectDelayed.push(runEffect)
+  }
+}
+
+
+export function withHooks<Props>(renderFunc: (props: Props) => React.ReactNode): React.FunctionComponent<Props> {
+
+  const componentClass = class extends React.Component<Props, IHooksComponentState> implements IHooksComponentExtension {
+    public state: IHooksComponentState = {}
+    public effect: IHooksComponentEffect = {}
+    public effectDelayed: Array<() => void> = []
+
+    public runEffect() {
+      for (const effectFunc of this.effectDelayed) {
+        effectFunc()
       }
+      this.effectDelayed = []
     }
 
-    public componentWillUnmount() {
-      for (const nu of Object.getOwnPropertyNames(this.waitedEffects)) {
-        this.waitedEffects[nu]()
-      }
-
-      for (const nu of Object.getOwnPropertyNames(this.effect)) {
-        const [cleanup] = this.effect[nu]
-        if (typeof cleanup === 'function') {
+    public cleanupEffect() {
+      for (const useEffectNu of Object.getOwnPropertyNames(this.effect)) {
+        const [cleanup] = this.effect[useEffectNu]
+        if (cleanup) {
           cleanup()
         }
       }
-
-      this.state = {}
       this.effect = {}
-      this.waitedEffects = {}
-      this.renderFunc = null
     }
 
-    private initRenderFunc(props: Props) {
-      const that = this
-
-      const hooksNu = {
-        effectNu: 0,
-        stateNu: 0
-      }
-
-      function resetHooksContextNu() {
-        hooksNu.stateNu = 0
-        hooksNu.effectNu = 0
-      }
-
-      const hooks: IHooks = {
-
-        useState<T>(value: T) {
-          const nu = hooksNu.stateNu++
-          const setState = (v: T) => {
-            that.setState({[nu]: v})
-          }
-          if (that.state.hasOwnProperty(nu)) {
-            return [that.state[nu], setState]
-          } else {
-            that.state[nu] = value
-            return [value, setState]
-          }
-        },
-
-        useEffect(effect, dependencies?) {
-          const nu = hooksNu.effectNu++
-          if (that.effect.hasOwnProperty(nu)) {
-            const [cleanup, lastDependencies] = that.effect[nu]
-            that.waitedEffects[nu] = (() => {
-              if (isChanged(dependencies, lastDependencies)) {
-                if (cleanup) {
-                  cleanup()
-                }
-                that.effect[nu] = [effect() || null, dependencies || null]
-              }
-            })
-          } else {
-            that.waitedEffects[nu] = (() => {
-              that.effect[nu] = [effect() || null, dependencies || null]
-            })
-          }
-
-          setTimeout(() => {
-            for (const effectNu of Object.getOwnPropertyNames(that.waitedEffects)) {
-              that.waitedEffects[effectNu]()
-            }
-            that.waitedEffects = {}
-          })
-        },
-
-        useContext<T>() {
-          return null as any
-        }
-
-      }
-
-      const renderFunc = renderWithHooks(hooks)
-
-      this.renderFunc = (renderProps: Props) => {
-        resetHooksContextNu()
-        return renderFunc(renderProps)
-      }
-
-      return this.renderFunc(props)
+    public componentDidUpdate() {
+      this.runEffect()
     }
+
+    public componentDidMount() {
+      this.runEffect()
+    }
+
+    public componentWillUnmount() {
+      this.cleanupEffect()
+    }
+
+    public render() {
+      hooksContextPush(this)
+      const renderResult = renderFunc(this.props)
+      hooksContextPop()
+      return renderResult
+    }
+
   }
 
-  Object.defineProperty(
-    componentClass,
-    'name',
-    {get: () => name || renderWithHooks.name}
-  )
-
-  return componentClass as any as React.FunctionComponent<Props>
+  Object.defineProperty(componentClass, 'name', {get: () => renderFunc.name})
+  return componentClass as any
 }

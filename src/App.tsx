@@ -1,12 +1,34 @@
-import * as React from 'react';
-import './App.css';
-import {withHooks} from './hooks'
+import * as React from 'react'
+import './App.css'
+import {useEffect, useState, withHooks} from './hooks'
 
-import logo from './logo.svg';
+import logo from './logo.svg'
 
-const Counter = withHooks(({useState}) => () => {
+const Counter2 = withHooks(function CounterC() {
+  const [lCount, setLCount] = useState(0)
+
+  useEffect(() => {
+    // tslint:disable
+    console.log('effect')
+    return () => {
+      console.log('cleanup')
+    }
+  }, [lCount])
+
+  return (
+    <div>
+      <button onClick={() => setLCount(lCount - 1)}>-</button>
+      <input type="number" onChange={(e) => setLCount(e.target && parseInt(e.target.value, 10) || 0)} value={lCount}/>
+      <button onClick={() => setLCount(lCount + 1)}>+</button>
+    </div>
+  )
+})
+
+const Counter = withHooks(function CounterC() {
   const [lCount, setLCount] = useState(0)
   const [rCount, setRCount] = useState(0)
+  const [isShow, setIsShow] = useState(true)
+
   return (
     <div>
 
@@ -14,7 +36,9 @@ const Counter = withHooks(({useState}) => () => {
       <input type="number" onChange={(e) => setLCount(e.target && parseInt(e.target.value, 10) || 0)} value={lCount}/>
       <button onClick={() => setLCount(lCount + 1)}>+</button>
 
-      <span>+</span>
+      <hr onClick={() => setIsShow(!isShow)}/>
+      { isShow ? <Counter2/> : null}
+      <hr/>
 
       <button onClick={() => setRCount(rCount - 1)}>-</button>
       <input type="number" onChange={(e) => setRCount(e.target && parseInt(e.target.value, 10) || 0)} value={rCount}/>
@@ -23,6 +47,7 @@ const Counter = withHooks(({useState}) => () => {
       <span>=</span>
 
       {lCount + rCount}
+
     </div>
   )
 })
@@ -32,7 +57,7 @@ class App extends React.Component {
     return (
       <div className="App">
         <header className="App-header">
-          <img src={logo} className="App-logo" alt="logo" />
+          <img src={logo} className="App-logo" alt="logo"/>
           <h1 className="App-title">Welcome to React</h1>
         </header>
         <p className="App-intro">
@@ -40,8 +65,8 @@ class App extends React.Component {
         </p>
         <Counter/>
       </div>
-    );
+    )
   }
 }
 
-export default App;
+export default App
