@@ -1,22 +1,30 @@
+// tslint:disable
+import {createContext} from 'react'
 import * as React from 'react'
 import './App.css'
-import {useEffect, useState, withHooks} from './hooks'
+import {useContext, useEffect, useState, withHooks} from './hooks'
 
 import logo from './logo.svg'
+
+const helloContext = createContext({ message: 'default' })
+const testContext = createContext({ test: 'test' })
 
 const Counter2 = withHooks(function CounterC() {
   const [lCount, setLCount] = useState(0)
 
   useEffect(() => {
-    // tslint:disable
     console.log('effect')
     return () => {
       console.log('cleanup')
     }
   }, [lCount])
 
+  const {message}  = useContext(helloContext)
+  const {test} = useContext(testContext)
+
   return (
     <div>
+      <h1>{message} | {test}</h1>
       <button onClick={() => setLCount(lCount - 1)}>-</button>
       <input type="number" onChange={(e) => setLCount(e.target && parseInt(e.target.value, 10) || 0)} value={lCount}/>
       <button onClick={() => setLCount(lCount + 1)}>+</button>
@@ -29,6 +37,8 @@ const Counter = withHooks(function CounterC() {
   const [rCount, setRCount] = useState(0)
   const [isShow, setIsShow] = useState(true)
 
+  const [message, setMessage] = useState('hello')
+
   return (
     <div>
 
@@ -36,9 +46,14 @@ const Counter = withHooks(function CounterC() {
       <input type="number" onChange={(e) => setLCount(e.target && parseInt(e.target.value, 10) || 0)} value={lCount}/>
       <button onClick={() => setLCount(lCount + 1)}>+</button>
 
-      <hr onClick={() => setIsShow(!isShow)}/>
-      { isShow ? <Counter2/> : null}
-      <hr/>
+      <helloContext.Provider value={{message}}>
+        <testContext.Provider value={{test: 'fuck'}}>
+          <hr onClick={() => setIsShow(!isShow)}/>
+          { isShow ? <Counter2/> : null}
+          <hr/>
+        </testContext.Provider>
+      </helloContext.Provider>
+      <button onClick={() => setMessage('fuck')}>fuck</button>
 
       <button onClick={() => setRCount(rCount - 1)}>-</button>
       <input type="number" onChange={(e) => setRCount(e.target && parseInt(e.target.value, 10) || 0)} value={rCount}/>
